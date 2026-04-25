@@ -1,0 +1,24 @@
+{
+  "Code": 1000,
+  "Total": 2,
+  "Contacts": [
+    {
+      "ID": "contact-1",
+      "Name": "Alice",
+      "UID": "uid-alice",
+      "Size": 256,
+      "CreateTime": 1700000000,
+      "ModifyTime": 1700000010,
+      "LabelIDs": []
+    },
+    {
+      "ID": "contact-2",
+      "Name": "Bob",
+      "UID": "uid-bob",
+      "Size": 312,
+      "CreateTime": 1700000100,
+      "ModifyTime": 1700000110,
+      "LabelIDs": ["family"]
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "Code": 1000,
+  "Message": {
+    "ID": "msg-1",
+    "Order": 1,
+    "ConversationID": "conv-1",
+    "Subject": "Hello",
+    "Unread": 0,
+    "Type": 0,
+    "Sender": {"Address": "alice@example.com", "Name": "Alice"},
+    "ToList": [{"Address": "bob@example.com", "Name": "Bob"}],
+    "Time": 1700000000,
+    "Size": 1234,
+    "NumAttachments": 0,
+    "IsEncrypted": 0,
+    "ExpirationTime": 0,
+    "IsReplied": 0,
+    "IsRepliedAll": 0,
+    "IsForwarded": 0,
+    "SpamScore": 0,
+    "AddressID": "addr-1",
+    "Body": "Hello world",
+    "MIMEType": "text/plain",
+    "CCList": [],
+    "BCCList": [],
+    "ReplyTos": [],
+    "Header": "",
+    "Attachments": [],
+    "LabelIDs": ["0", "5"]
+  }
+}
