@@ -24,8 +24,6 @@ import (
 	"time"
 )
 
-const liveRootURL = "https://mail.proton.me/api"
-
 // TestIntegrationListMessages authenticates with credentials from the
 // environment and lists up to 5 messages. Acts as a smoke test that the
 // auth + list flow works end-to-end against the real API.
@@ -39,10 +37,13 @@ func TestIntegrationListMessages(t *testing.T) {
 		t.Skip("PROTONMAIL_TEST_USERNAME / PROTONMAIL_TEST_PASSWORD not set; skipping integration test")
 	}
 
-	c := &Client{
-		RootURL:    liveRootURL,
-		AppVersion: "Other",
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+	c, err := NewClient(
+		WithBaseURL(defaultBaseURL),
+		WithAppVersion("Other"),
+		WithHTTPClient(&http.Client{Timeout: 30 * time.Second}),
+	)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
 	}
 
 	ctx := context.Background()

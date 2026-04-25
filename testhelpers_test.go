@@ -19,7 +19,7 @@ func readFixture(t *testing.T, rel string) []byte {
 	return b
 }
 
-// newTestServer wires an httptest.Server and a *Client whose RootURL points
+// newTestServer wires an httptest.Server and a *Client whose baseURL points
 // at it. The handler is invoked for every request — tests can assert on
 // method/path/body inside the handler.
 //
@@ -27,9 +27,14 @@ func readFixture(t *testing.T, rel string) []byte {
 func newTestServer(t *testing.T, handler http.HandlerFunc) (*httptest.Server, *Client, func()) {
 	t.Helper()
 	srv := httptest.NewServer(handler)
-	c := &Client{
-		RootURL:    srv.URL,
-		AppVersion: "test/0.0.1",
+	c, err := NewClient(
+		WithBaseURL(srv.URL),
+		WithAppVersion("test/0.0.1"),
+		WithHTTPClient(srv.Client()),
+	)
+	if err != nil {
+		srv.Close()
+		t.Fatalf("NewClient: %v", err)
 	}
 	return srv, c, srv.Close
 }
