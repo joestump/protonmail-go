@@ -31,6 +31,16 @@ Note: pre-1.0 releases may break the API at any minor bump.
   with #6 (#5).
 - Default User-Agent now identifies the library
   (`protonmail-go/<version>`) instead of impersonating Firefox (#5, #D5).
+- Improved: `do` now consistently closes the response body on all error
+  paths and returns `(nil, err)` on transport errors (#4).
+
+### Fixed
+- `doJSON` now checks HTTP status before JSON-decoding (was producing
+  confusing decode errors on non-JSON 4xx/5xx responses). API-error-shaped
+  bodies still surface as `*APIError`; everything else returns a
+  status-bearing error (#4).
+- `GetAttachment` no longer leaks the response body on non-2xx responses;
+  the body is drained and closed before the error is returned (#4).
 
 ## [0.1.0] - TBD
 

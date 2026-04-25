@@ -151,6 +151,13 @@ func (c *Client) newJSONRequest(ctx context.Context, method, path string, body i
 	return req, nil
 }
 
+// do issues req and returns the response. On success (err == nil) the caller
+// owns resp.Body and is responsible for draining and closing it. On error,
+// do guarantees that any response body it obtained has been drained and
+// closed, and returns (nil, err).
+//
+// A 401 with a configured ReAuth callback triggers a single re-auth + retry;
+// the original 401 response body is drained and closed before the retry.
 func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, error) {
 	req.Header.Set("User-Agent", c.userAgent)
 
@@ -158,23 +165,30 @@ func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, err
 	// http.DefaultClient and WithHTTPClient(nil) errors at construction.
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return resp, err
+		// On transport error resp is nil per net/http contract; nothing to close.
+		return nil, err
 	}
 
-	// Check if access token has expired
+	// Check if access token has expired. Retry is only safe if the request
+	// body can be replayed: either there is no body, or GetBody was set so
+	// the body can be re-read. If a 401 arrives with a non-replayable body
+	// (req.Body != nil && GetBody == nil) we silently skip the retry and
+	// surface the 401 to the caller — re-sending an already-consumed body
+	// would send an empty body and corrupt the request. TODO #6: log this
+	// case via the structured logger once it exists.
 	_, hasAuth := req.Header["Authorization"]
 	canRetry := req.Body == nil || req.GetBody != nil
 	if resp.StatusCode == http.StatusUnauthorized && hasAuth && c.reauth != nil && canRetry {
-		resp.Body.Close()
+		drainAndClose(resp.Body)
 		c.accessToken = ""
 		if err := c.reauth(ctx); err != nil {
-			return resp, err
+			return nil, err
 		}
 		c.setRequestAuthorization(req) // Access token has changed
 		if req.Body != nil {
 			body, err := req.GetBody()
 			if err != nil {
-				return resp, err
+				return nil, err
 			}
 			req.Body = body
 		}
@@ -184,6 +198,17 @@ func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, err
 	return resp, nil
 }
 
+// drainAndClose drains rc up to a small cap so the connection can be reused,
+// then closes it. Safe to call with a nil ReadCloser.
+func drainAndClose(rc io.ReadCloser) {
+	if rc == nil {
+		return
+	}
+	// Cap drain to avoid unbounded reads on a hostile server.
+	_, _ = io.Copy(io.Discard, io.LimitReader(rc, 64<<10))
+	_ = rc.Close()
+}
+
 func (c *Client) doJSON(ctx context.Context, req *http.Request, respData interface{}) error {
 	req.Header.Set("Accept", "application/json")
 
@@ -191,13 +216,42 @@ func (c *Client) doJSON(ctx context.Context, req *http.Request, respData interfa
 		respData = new(resp)
 	}
 
-	resp, err := c.do(ctx, req)
+	httpResp, err := c.do(ctx, req)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer httpResp.Body.Close()
 
-	if err := json.NewDecoder(resp.Body).Decode(respData); err != nil {
+	// Status check FIRST. A non-2xx with a non-JSON body (e.g. an HTML error
+	// page from an upstream proxy) used to surface as a confusing JSON decode
+	// error; now it always becomes a typed error containing the status.
+	if httpResp.StatusCode/100 != 2 {
+		// Read up to 64KB of the error body for diagnostic context.
+		bodyBytes, _ := io.ReadAll(io.LimitReader(httpResp.Body, 64<<10))
+		// Drain anything left so the connection can be reused. Cap the
+		// drain to 1 MB so a hostile/slow-loris server can't pin this
+		// goroutine forever (the deferred Close above never fires until
+		// we return).
+		_, _ = io.Copy(io.Discard, io.LimitReader(httpResp.Body, 1<<20))
+
+		// Best-effort: if the body parses as a Proton API error envelope,
+		// surface the existing *APIError shape so callers that already match
+		// on it keep working.
+		var raw resp
+		if json.Unmarshal(bodyBytes, &raw) == nil && raw.RawAPIError != nil && raw.RawAPIError.Message != "" {
+			apiErr := &APIError{Code: raw.Code, Message: raw.RawAPIError.Message}
+			if c.debug {
+				log.Printf("<< %v %v: %v", req.Method, req.URL.Path, apiErr)
+			}
+			return apiErr
+		}
+
+		// TODO #3: replace with a typed *HTTPError once issue #3 lands.
+		// %q so binary/non-UTF8 bytes are safely Go-quoted in logs.
+		return fmt.Errorf("HTTP %d %s: %q", httpResp.StatusCode, httpResp.Status, bytes.TrimSpace(bodyBytes))
+	}
+
+	if err := json.NewDecoder(httpResp.Body).Decode(respData); err != nil {
 		return err
 	}
 
