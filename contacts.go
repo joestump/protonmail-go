@@ -2,6 +2,7 @@ package protonmail
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"net/url"
@@ -219,14 +220,14 @@ type ContactImport struct {
 	Cards []*ContactCard
 }
 
-func (c *Client) ListContacts(page, pageSize int) (total int, contacts []*Contact, err error) {
+func (c *Client) ListContacts(ctx context.Context, page, pageSize int) (total int, contacts []*Contact, err error) {
 	v := url.Values{}
 	v.Set("Page", strconv.Itoa(page))
 	if pageSize > 0 {
 		v.Set("PageSize", strconv.Itoa(pageSize))
 	}
 
-	req, err := c.newRequest(http.MethodGet, "/contacts?"+v.Encode(), nil)
+	req, err := c.newRequest(ctx, http.MethodGet, "/contacts?"+v.Encode(), nil)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -236,21 +237,21 @@ func (c *Client) ListContacts(page, pageSize int) (total int, contacts []*Contac
 		Contacts []*Contact
 		Total    int
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return 0, nil, err
 	}
 
 	return respData.Total, respData.Contacts, nil
 }
 
-func (c *Client) ListContactsEmails(page, pageSize int) (total int, emails []*ContactEmail, err error) {
+func (c *Client) ListContactsEmails(ctx context.Context, page, pageSize int) (total int, emails []*ContactEmail, err error) {
 	v := url.Values{}
 	v.Set("Page", strconv.Itoa(page))
 	if pageSize > 0 {
 		v.Set("PageSize", strconv.Itoa(pageSize))
 	}
 
-	req, err := c.newRequest(http.MethodGet, "/contacts/emails?"+v.Encode(), nil)
+	req, err := c.newRequest(ctx, http.MethodGet, "/contacts/emails?"+v.Encode(), nil)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -260,21 +261,21 @@ func (c *Client) ListContactsEmails(page, pageSize int) (total int, emails []*Co
 		ContactEmails []*ContactEmail
 		Total         int
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return 0, nil, err
 	}
 
 	return respData.Total, respData.ContactEmails, nil
 }
 
-func (c *Client) ListContactsExport(page, pageSize int) (total int, contacts []*ContactExport, err error) {
+func (c *Client) ListContactsExport(ctx context.Context, page, pageSize int) (total int, contacts []*ContactExport, err error) {
 	v := url.Values{}
 	v.Set("Page", strconv.Itoa(page))
 	if pageSize > 0 {
 		v.Set("PageSize", strconv.Itoa(pageSize))
 	}
 
-	req, err := c.newRequest(http.MethodGet, "/contacts/export?"+v.Encode(), nil)
+	req, err := c.newRequest(ctx, http.MethodGet, "/contacts/export?"+v.Encode(), nil)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -284,15 +285,15 @@ func (c *Client) ListContactsExport(page, pageSize int) (total int, contacts []*
 		Contacts []*ContactExport
 		Total    int
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return 0, nil, err
 	}
 
 	return respData.Total, respData.Contacts, nil
 }
 
-func (c *Client) GetContact(id string) (*Contact, error) {
-	req, err := c.newRequest(http.MethodGet, "/contacts/"+id, nil)
+func (c *Client) GetContact(ctx context.Context, id string) (*Contact, error) {
+	req, err := c.newRequest(ctx, http.MethodGet, "/contacts/"+id, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +302,7 @@ func (c *Client) GetContact(id string) (*Contact, error) {
 		resp
 		Contact *Contact
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 
@@ -320,12 +321,12 @@ func (resp *CreateContactResp) Err() error {
 	return resp.Response.Err()
 }
 
-func (c *Client) CreateContacts(contacts []*ContactImport) ([]*CreateContactResp, error) {
+func (c *Client) CreateContacts(ctx context.Context, contacts []*ContactImport) ([]*CreateContactResp, error) {
 	reqData := struct {
 		Contacts                  []*ContactImport
 		Overwrite, Groups, Labels int
 	}{contacts, 0, 0, 0}
-	req, err := c.newJSONRequest(http.MethodPost, "/contacts", &reqData)
+	req, err := c.newJSONRequest(ctx, http.MethodPost, "/contacts", &reqData)
 	if err != nil {
 		return nil, err
 	}
@@ -334,15 +335,15 @@ func (c *Client) CreateContacts(contacts []*ContactImport) ([]*CreateContactResp
 		resp
 		Responses []*CreateContactResp
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 
 	return respData.Responses, nil
 }
 
-func (c *Client) UpdateContact(id string, contact *ContactImport) (*Contact, error) {
-	req, err := c.newJSONRequest(http.MethodPut, "/contacts/"+id, contact)
+func (c *Client) UpdateContact(ctx context.Context, id string, contact *ContactImport) (*Contact, error) {
+	req, err := c.newJSONRequest(ctx, http.MethodPut, "/contacts/"+id, contact)
 	if err != nil {
 		return nil, err
 	}
@@ -351,7 +352,7 @@ func (c *Client) UpdateContact(id string, contact *ContactImport) (*Contact, err
 		resp
 		Contact *Contact
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 
@@ -369,11 +370,11 @@ func (resp *DeleteContactResp) Err() error {
 	return resp.Response.Err()
 }
 
-func (c *Client) DeleteContacts(ids []string) ([]*DeleteContactResp, error) {
+func (c *Client) DeleteContacts(ctx context.Context, ids []string) ([]*DeleteContactResp, error) {
 	reqData := struct {
 		IDs []string
 	}{ids}
-	req, err := c.newJSONRequest(http.MethodPut, "/contacts/delete", &reqData)
+	req, err := c.newJSONRequest(ctx, http.MethodPut, "/contacts/delete", &reqData)
 	if err != nil {
 		return nil, err
 	}
@@ -382,21 +383,21 @@ func (c *Client) DeleteContacts(ids []string) ([]*DeleteContactResp, error) {
 		resp
 		Responses []*DeleteContactResp
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 
 	return respData.Responses, nil
 }
 
-func (c *Client) DeleteAllContacts() error {
-	req, err := c.newRequest(http.MethodDelete, "/contacts", nil)
+func (c *Client) DeleteAllContacts(ctx context.Context) error {
+	req, err := c.newRequest(ctx, http.MethodDelete, "/contacts", nil)
 	if err != nil {
 		return err
 	}
 
 	var respData resp
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return err
 	}
 

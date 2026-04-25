@@ -1,6 +1,7 @@
 package protonmail
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -71,12 +72,12 @@ func (pub *PublicKey) Entity() (*openpgp.Entity, error) {
 }
 
 // GetPublicKeys retrieves public keys for a user.
-func (c *Client) GetPublicKeys(email string) (*PublicKeyResp, error) {
+func (c *Client) GetPublicKeys(ctx context.Context, email string) (*PublicKeyResp, error) {
 	v := url.Values{}
 	v.Set("Email", email)
 	// TODO: Fingerprint
 
-	req, err := c.newRequest(http.MethodGet, "/keys?"+v.Encode(), nil)
+	req, err := c.newRequest(ctx, http.MethodGet, "/keys?"+v.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +86,7 @@ func (c *Client) GetPublicKeys(email string) (*PublicKeyResp, error) {
 		resp
 		*PublicKeyResp
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 

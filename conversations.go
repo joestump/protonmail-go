@@ -1,6 +1,7 @@
 package protonmail
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 )
@@ -20,13 +21,13 @@ type Conversation struct {
 	LabelIDs       []string
 }
 
-func (c *Client) GetConversation(id, msgID string) (*Conversation, []*Message, error) {
+func (c *Client) GetConversation(ctx context.Context, id, msgID string) (*Conversation, []*Message, error) {
 	v := url.Values{}
 	if msgID != "" {
 		v.Set("MessageID", msgID)
 	}
 
-	req, err := c.newRequest(http.MethodGet, "/conversations/"+id+"?"+v.Encode(), nil)
+	req, err := c.newRequest(ctx, http.MethodGet, "/conversations/"+id+"?"+v.Encode(), nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -36,7 +37,7 @@ func (c *Client) GetConversation(id, msgID string) (*Conversation, []*Message, e
 		Conversation *Conversation
 		Messages     []*Message
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, nil, err
 	}
 

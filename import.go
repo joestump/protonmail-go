@@ -1,6 +1,7 @@
 package protonmail
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -35,7 +36,7 @@ type Importer struct {
 	result   <-chan ImportResult
 }
 
-func (imp *Importer) ImportMessage(key string) (io.Writer, error) {
+func (imp *Importer) ImportMessage(ctx context.Context, key string) (io.Writer, error) {
 	if uploaded, ok := imp.uploaded[key]; !ok {
 		return nil, fmt.Errorf("protonmail: unknown import message %q", key)
 	} else if uploaded {
@@ -66,7 +67,7 @@ func (imp *Importer) close() error {
 	return imp.pw.Close()
 }
 
-func (imp *Importer) Commit() (ImportResult, error) {
+func (imp *Importer) Commit(ctx context.Context) (ImportResult, error) {
 	if err := imp.close(); err != nil {
 		return nil, err
 	}
@@ -84,7 +85,7 @@ func (imp *Importer) Commit() (ImportResult, error) {
 	return <-imp.result, nil
 }
 
-func (c *Client) Import(metadata map[string]*Message) (*Importer, error) {
+func (c *Client) Import(ctx context.Context, metadata map[string]*Message) (*Importer, error) {
 	pr, pw := io.Pipe()
 
 	mw := multipart.NewWriter(pw)
@@ -95,7 +96,7 @@ func (c *Client) Import(metadata map[string]*Message) (*Importer, error) {
 		defer close(done)
 		defer close(result)
 
-		req, err := c.newRequest(http.MethodPost, "/import", pr)
+		req, err := c.newRequest(ctx, http.MethodPost, "/import", pr)
 		if err != nil {
 			done <- err
 			return
@@ -113,7 +114,7 @@ func (c *Client) Import(metadata map[string]*Message) (*Importer, error) {
 			resp
 			Responses []messageResp
 		}
-		err = c.doJSON(req, &respData)
+		err = c.doJSON(ctx, req, &respData)
 		done <- err
 		if err != nil {
 			return

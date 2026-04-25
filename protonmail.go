@@ -3,6 +3,7 @@ package protonmail
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -64,7 +65,7 @@ type Client struct {
 	Debug      bool
 
 	HTTPClient *http.Client
-	ReAuth     func() error
+	ReAuth     func(ctx context.Context) error
 
 	uid         string
 	accessToken string
@@ -78,8 +79,8 @@ func (c *Client) setRequestAuthorization(req *http.Request) {
 	}
 }
 
-func (c *Client) newRequest(method, path string, body io.Reader) (*http.Request, error) {
-	req, err := http.NewRequest(method, c.RootURL+path, body)
+func (c *Client) newRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.RootURL+path, body)
 	if err != nil {
 		return nil, err
 	}
@@ -94,14 +95,14 @@ func (c *Client) newRequest(method, path string, body io.Reader) (*http.Request,
 	return req, nil
 }
 
-func (c *Client) newJSONRequest(method, path string, body interface{}) (*http.Request, error) {
+func (c *Client) newJSONRequest(ctx context.Context, method, path string, body interface{}) (*http.Request, error) {
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(body); err != nil {
 		return nil, err
 	}
 	b := buf.Bytes()
 
-	req, err := c.newRequest(method, path, bytes.NewReader(b))
+	req, err := c.newRequest(ctx, method, path, bytes.NewReader(b))
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +118,7 @@ func (c *Client) newJSONRequest(method, path string, body interface{}) (*http.Re
 	return req, nil
 }
 
-func (c *Client) do(req *http.Request) (*http.Response, error) {
+func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, error) {
 	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:101.0) Gecko/20100101 Firefox/101.0")
 
 	httpClient := c.HTTPClient
@@ -136,7 +137,7 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 	if resp.StatusCode == http.StatusUnauthorized && hasAuth && c.ReAuth != nil && canRetry {
 		resp.Body.Close()
 		c.accessToken = ""
-		if err := c.ReAuth(); err != nil {
+		if err := c.ReAuth(ctx); err != nil {
 			return resp, err
 		}
 		c.setRequestAuthorization(req) // Access token has changed
@@ -147,20 +148,20 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 			}
 			req.Body = body
 		}
-		return c.do(req)
+		return c.do(ctx, req)
 	}
 
 	return resp, nil
 }
 
-func (c *Client) doJSON(req *http.Request, respData interface{}) error {
+func (c *Client) doJSON(ctx context.Context, req *http.Request, respData interface{}) error {
 	req.Header.Set("Accept", "application/json")
 
 	if respData == nil {
 		respData = new(resp)
 	}
 
-	resp, err := c.do(req)
+	resp, err := c.do(ctx, req)
 	if err != nil {
 		return err
 	}

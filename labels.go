@@ -1,6 +1,7 @@
 package protonmail
 
 import (
+	"context"
 	"net/http"
 )
 
@@ -35,8 +36,8 @@ type Label struct {
 	Order     int
 }
 
-func (c *Client) ListLabels() ([]*Label, error) {
-	req, err := c.newRequest(http.MethodGet, "/labels", nil)
+func (c *Client) ListLabels(ctx context.Context) ([]*Label, error) {
+	req, err := c.newRequest(ctx, http.MethodGet, "/labels", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +46,7 @@ func (c *Client) ListLabels() ([]*Label, error) {
 		resp
 		Labels []*Label
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 
