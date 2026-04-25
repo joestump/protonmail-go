@@ -54,9 +54,20 @@ type RawAPIError struct {
 type APIError struct {
 	Code    int
 	Message string
+
+	// HTTPError, if non-nil, carries the underlying HTTP-level failure
+	// (status code, raw body) that produced this APIError. It is exposed
+	// via Unwrap so errors.Is(err, ErrRateLimited) and friends can match
+	// on HTTP status when Proton's application code is unknown.
+	HTTPError *HTTPError
 }
 
+// Error implements error. It is nil-safe: calling Error() on a nil receiver
+// returns "<nil>" instead of panicking.
 func (err *APIError) Error() string {
+	if err == nil {
+		return "<nil>"
+	}
 	return fmt.Sprintf("[%v] %v", err.Code, err.Message)
 }
 
@@ -234,21 +245,30 @@ func (c *Client) doJSON(ctx context.Context, req *http.Request, respData interfa
 		// we return).
 		_, _ = io.Copy(io.Discard, io.LimitReader(httpResp.Body, 1<<20))
 
+		httpErr := &HTTPError{
+			StatusCode: httpResp.StatusCode,
+			Status:     httpResp.Status,
+			Body:       bodyBytes,
+		}
+
 		// Best-effort: if the body parses as a Proton API error envelope,
 		// surface the existing *APIError shape so callers that already match
-		// on it keep working.
+		// on it keep working. Wire the HTTPError through so errors.Is can fall
+		// through to the HTTP status when the Proton "Code" is unknown.
 		var raw resp
 		if json.Unmarshal(bodyBytes, &raw) == nil && raw.RawAPIError != nil && raw.RawAPIError.Message != "" {
-			apiErr := &APIError{Code: raw.Code, Message: raw.RawAPIError.Message}
+			apiErr := &APIError{
+				Code:      raw.Code,
+				Message:   raw.RawAPIError.Message,
+				HTTPError: httpErr,
+			}
 			if c.debug {
 				log.Printf("<< %v %v: %v", req.Method, req.URL.Path, apiErr)
 			}
 			return apiErr
 		}
 
-		// TODO #3: replace with a typed *HTTPError once issue #3 lands.
-		// %q so binary/non-UTF8 bytes are safely Go-quoted in logs.
-		return fmt.Errorf("HTTP %d %s: %q", httpResp.StatusCode, httpResp.Status, bytes.TrimSpace(bodyBytes))
+		return httpErr
 	}
 
 	if err := json.NewDecoder(httpResp.Body).Decode(respData); err != nil {

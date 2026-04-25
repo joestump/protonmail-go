@@ -120,7 +120,7 @@ func (c *Client) Auth(ctx context.Context, username, password string, info *Auth
 
 	proofs, err := srp([]byte(password), info)
 	if err != nil {
-		return nil, fmt.Errorf("SRP failed during auth: %v", err)
+		return nil, fmt.Errorf("SRP failed during auth: %w", err)
 	}
 
 	reqData := &authReq{
@@ -232,7 +232,7 @@ func (c *Client) ListKeySalts(ctx context.Context) (map[string][]byte, error) {
 		}
 		payload, err := base64.StdEncoding.DecodeString(salt.KeySalt)
 		if err != nil {
-			return nil, fmt.Errorf("failed to decode key salt payload: %v", err)
+			return nil, fmt.Errorf("failed to decode key salt payload: %w", err)
 		}
 		salts[salt.ID] = payload
 	}
@@ -324,7 +324,7 @@ func unlockKeyRing(keys []*PrivateKey, userKeyRing openpgp.EntityList, keySalts 
 	}
 
 	if len(keyRing) == 0 {
-		return nil, fmt.Errorf("failed to unlock any key")
+		return nil, fmt.Errorf("auth: %w", ErrNoUnlockableKeys)
 	}
 	return keyRing, nil
 }
@@ -360,7 +360,7 @@ func (c *Client) Unlock(ctx context.Context, auth *Auth, keySalts map[string][]b
 	}
 
 	if len(keyRing) == 0 {
-		return nil, fmt.Errorf("failed to unlock any key")
+		return nil, fmt.Errorf("auth: %w", ErrNoUnlockableKeys)
 	}
 
 	c.keyRing = keyRing

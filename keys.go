@@ -34,7 +34,7 @@ type PrivateKey struct {
 func (priv *PrivateKey) Entity() (*openpgp.Entity, error) {
 	keyRing, err := openpgp.ReadArmoredKeyRing(strings.NewReader(priv.PrivateKey))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read private key: %v", err)
+		return nil, fmt.Errorf("failed to read private key: %w", err)
 	}
 	if len(keyRing) == 0 {
 		return nil, errors.New("private key is empty")
@@ -63,7 +63,7 @@ type PublicKey struct {
 func (pub *PublicKey) Entity() (*openpgp.Entity, error) {
 	keyRing, err := openpgp.ReadArmoredKeyRing(strings.NewReader(pub.PublicKey))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read public key: %v", err)
+		return nil, fmt.Errorf("failed to read public key: %w", err)
 	}
 	if len(keyRing) == 0 {
 		return nil, errors.New("public key is empty")

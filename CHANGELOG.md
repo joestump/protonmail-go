@@ -33,6 +33,22 @@ Note: pre-1.0 releases may break the API at any minor bump.
   (`protonmail-go/<version>`) instead of impersonating Firefox (#5, #D5).
 - Improved: `do` now consistently closes the response body on all error
   paths and returns `(nil, err)` on transport errors (#4).
+- **BREAKING:** `APIError`'s `Error()` and field accessors may have changed;
+  the type now implements `Is(target error) bool` (#3).
+- Errors returned from networked methods now wrap their cause with `%w`. Use
+  `errors.Is`/`errors.As` (#3).
+- **BREAKING:** Some errors that were string-formatted are now typed:
+  `*HTTPError` for non-2xx HTTP failures (#3).
+- New sentinels exported: `ErrUnauthorized`, `ErrNotFound`, `ErrRateLimited`,
+  `ErrNoUnlockableKeys`, `ErrImporterClosed` (#3).
+- `*APIError` now carries an optional `HTTPError *HTTPError` field and exposes
+  `Unwrap()` so `errors.Is(err, ErrRateLimited)` / `ErrNotFound` resolve via
+  HTTP status when Proton's application "Code" is unknown. Proton "Code" is
+  treated as a hint; HTTP status is the source of truth (#3).
+- `(*APIError).Error()` and `(*HTTPError).Error()` are now nil-safe and return
+  `"<nil>"` instead of panicking on a nil receiver (#3).
+- `HTTPError.Body` is documented as potentially containing sensitive data
+  (tokens, addresses); callers must not log it verbatim (#3).
 
 ### Fixed
 - `doJSON` now checks HTTP status before JSON-decoding (was producing
