@@ -1,0 +1,8 @@
+{
+  "Code": 1000,
+  "Version": 4,
+  "Modulus": "-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\ntest-modulus-base64\n-----BEGIN PGP SIGNATURE-----\n-----END PGP SIGNATURE-----\n",
+  "ServerEphemeral": "dGVzdC1zZXJ2ZXItZXBoZW1lcmFs",
+  "Salt": "dGVzdC1zYWx0",
+  "SRPSession": "test-srp-session-id"
+}

@@ -1,0 +1,29 @@
+{
+  "Code": 1000,
+  "Sent": {
+    "ID": "msg-sent-1",
+    "Order": 100,
+    "Subject": "Hello",
+    "Unread": 0,
+    "Type": 2,
+    "Sender": {"Address": "alice@example.com", "Name": "Alice"},
+    "ToList": [{"Address": "bob@example.com", "Name": "Bob"}],
+    "Time": 1700000200,
+    "Size": 2048,
+    "NumAttachments": 0,
+    "IsEncrypted": 1,
+    "ExpirationTime": 0,
+    "IsReplied": 0,
+    "IsRepliedAll": 0,
+    "IsForwarded": 0,
+    "SpamScore": 0,
+    "AddressID": "addr-1",
+    "Body": "encrypted-body",
+    "CCList": [],
+    "BCCList": [],
+    "ReplyTos": [],
+    "Attachments": [],
+    "LabelIDs": ["7"]
+  },
+  "Parent": null
+}
