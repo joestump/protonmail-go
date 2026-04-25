@@ -224,7 +224,7 @@ func (s signatureWriter) Close() error {
 	return s.encryptedData.Close()
 }
 
-// noOpCloser is like an ioutil.NopCloser, but for an io.Writer.
+// noOpCloser is like an io.NopCloser, but for an io.Writer.
 type noOpCloser struct {
 	w io.Writer
 }

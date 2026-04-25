@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 	"time"
@@ -113,7 +112,7 @@ func (c *Client) newJSONRequest(method, path string, body interface{}) (*http.Re
 
 	req.Header.Set("Content-Type", "application/json")
 	req.GetBody = func() (io.ReadCloser, error) {
-		return ioutil.NopCloser(bytes.NewReader(b)), nil
+		return io.NopCloser(bytes.NewReader(b)), nil
 	}
 	return req, nil
 }
