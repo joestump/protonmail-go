@@ -2,6 +2,7 @@ package protonmail
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -47,18 +48,18 @@ func (resp *AuthInfoResp) authInfo() *AuthInfo {
 	return info
 }
 
-func (c *Client) AuthInfo(username string) (*AuthInfo, error) {
+func (c *Client) AuthInfo(ctx context.Context, username string) (*AuthInfo, error) {
 	reqData := &authInfoReq{
 		Username: username,
 	}
 
-	req, err := c.newJSONRequest(http.MethodPost, "/auth/info", reqData)
+	req, err := c.newJSONRequest(ctx, http.MethodPost, "/auth/info", reqData)
 	if err != nil {
 		return nil, err
 	}
 
 	var respData AuthInfoResp
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 
@@ -109,10 +110,10 @@ func (resp *authResp) auth() *Auth {
 	return auth
 }
 
-func (c *Client) Auth(username, password string, info *AuthInfo) (*Auth, error) {
+func (c *Client) Auth(ctx context.Context, username, password string, info *AuthInfo) (*Auth, error) {
 	if info == nil {
 		var err error
-		if info, err = c.AuthInfo(username); err != nil {
+		if info, err = c.AuthInfo(ctx, username); err != nil {
 			return nil, err
 		}
 	}
@@ -129,13 +130,13 @@ func (c *Client) Auth(username, password string, info *AuthInfo) (*Auth, error) 
 		ClientProof:     base64.StdEncoding.EncodeToString(proofs.clientProof),
 	}
 
-	req, err := c.newJSONRequest(http.MethodPost, "/auth", reqData)
+	req, err := c.newJSONRequest(ctx, http.MethodPost, "/auth", reqData)
 	if err != nil {
 		return nil, err
 	}
 
 	var respData authResp
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 
@@ -149,14 +150,14 @@ func (c *Client) Auth(username, password string, info *AuthInfo) (*Auth, error) 
 	return auth, nil
 }
 
-func (c *Client) AuthTOTP(code string) (scope string, err error) {
+func (c *Client) AuthTOTP(ctx context.Context, code string) (scope string, err error) {
 	reqData := struct {
 		TwoFactorCode string
 	}{
 		TwoFactorCode: code,
 	}
 
-	req, err := c.newJSONRequest(http.MethodPost, "/auth/2fa", reqData)
+	req, err := c.newJSONRequest(ctx, http.MethodPost, "/auth/2fa", reqData)
 	if err != nil {
 		return "", err
 	}
@@ -165,7 +166,7 @@ func (c *Client) AuthTOTP(code string) (scope string, err error) {
 		resp
 		Scope string
 	}{}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return "", err
 	}
 
@@ -181,7 +182,7 @@ type authRefreshReq struct {
 	RedirectURI  string
 }
 
-func (c *Client) AuthRefresh(expiredAuth *Auth) (*Auth, error) {
+func (c *Client) AuthRefresh(ctx context.Context, expiredAuth *Auth) (*Auth, error) {
 	reqData := &authRefreshReq{
 		RefreshToken: expiredAuth.RefreshToken,
 		ResponseType: "token",
@@ -189,14 +190,14 @@ func (c *Client) AuthRefresh(expiredAuth *Auth) (*Auth, error) {
 		RedirectURI:  "http://www.protonmail.ch",
 	}
 
-	req, err := c.newJSONRequest(http.MethodPost, "/auth/refresh", reqData)
+	req, err := c.newJSONRequest(ctx, http.MethodPost, "/auth/refresh", reqData)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("X-Pm-Uid", expiredAuth.UID)
 
 	var respData authResp
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 
@@ -206,8 +207,8 @@ func (c *Client) AuthRefresh(expiredAuth *Auth) (*Auth, error) {
 	return auth, nil
 }
 
-func (c *Client) ListKeySalts() (map[string][]byte, error) {
-	req, err := c.newRequest(http.MethodGet, "/keys/salts", nil)
+func (c *Client) ListKeySalts(ctx context.Context) (map[string][]byte, error) {
+	req, err := c.newRequest(ctx, http.MethodGet, "/keys/salts", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +220,7 @@ func (c *Client) ListKeySalts() (map[string][]byte, error) {
 			KeySalt string
 		}
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 
@@ -328,11 +329,11 @@ func unlockKeyRing(keys []*PrivateKey, userKeyRing openpgp.EntityList, keySalts 
 	return keyRing, nil
 }
 
-func (c *Client) Unlock(auth *Auth, keySalts map[string][]byte, passphrase string) (openpgp.EntityList, error) {
+func (c *Client) Unlock(ctx context.Context, auth *Auth, keySalts map[string][]byte, passphrase string) (openpgp.EntityList, error) {
 	c.uid = auth.UID
 	c.accessToken = auth.AccessToken
 
-	u, err := c.GetCurrentUser()
+	u, err := c.GetCurrentUser(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +343,7 @@ func (c *Client) Unlock(auth *Auth, keySalts map[string][]byte, passphrase strin
 		return nil, err
 	}
 
-	addrs, err := c.ListAddresses()
+	addrs, err := c.ListAddresses(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -367,13 +368,13 @@ func (c *Client) Unlock(auth *Auth, keySalts map[string][]byte, passphrase strin
 	return keyRing, nil
 }
 
-func (c *Client) Logout() error {
-	req, err := c.newRequest(http.MethodDelete, "/auth", nil)
+func (c *Client) Logout(ctx context.Context) error {
+	req, err := c.newRequest(ctx, http.MethodDelete, "/auth", nil)
 	if err != nil {
 		return err
 	}
 
-	if err := c.doJSON(req, nil); err != nil {
+	if err := c.doJSON(ctx, req, nil); err != nil {
 		return err
 	}
 

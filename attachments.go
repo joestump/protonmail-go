@@ -2,6 +2,7 @@ package protonmail
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -107,13 +108,13 @@ func (att *Attachment) Read(ciphertext io.Reader, keyring openpgp.KeyRing, promp
 
 // GetAttachment downloads an attachment's payload. The returned io.ReadCloser
 // may be encrypted, use Attachment.Read to decrypt it.
-func (c *Client) GetAttachment(id string) (io.ReadCloser, error) {
-	req, err := c.newRequest(http.MethodGet, "/attachments/"+id, nil)
+func (c *Client) GetAttachment(ctx context.Context, id string) (io.ReadCloser, error) {
+	req, err := c.newRequest(ctx, http.MethodGet, "/attachments/"+id, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := c.do(req)
+	resp, err := c.do(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +128,7 @@ func (c *Client) GetAttachment(id string) (io.ReadCloser, error) {
 
 // CreateAttachment uploads a new attachment. r must be an PGP data packet
 // encrypted with att.KeyPackets.
-func (c *Client) CreateAttachment(att *Attachment, r io.Reader) (created *Attachment, err error) {
+func (c *Client) CreateAttachment(ctx context.Context, att *Attachment, r io.Reader) (created *Attachment, err error) {
 	pr, pw := io.Pipe()
 	mw := multipart.NewWriter(pw)
 
@@ -178,7 +179,7 @@ func (c *Client) CreateAttachment(att *Attachment, r io.Reader) (created *Attach
 		pw.CloseWithError(mw.Close())
 	}()
 
-	req, err := c.newRequest(http.MethodPost, "/attachments", pr)
+	req, err := c.newRequest(ctx, http.MethodPost, "/attachments", pr)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +190,7 @@ func (c *Client) CreateAttachment(att *Attachment, r io.Reader) (created *Attach
 		resp
 		Attachment *Attachment
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 

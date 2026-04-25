@@ -1,6 +1,7 @@
 package protonmail
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -44,14 +45,14 @@ type CalendarEventCard struct {
 	MemberID  string
 }
 
-func (c *Client) ListCalendars(page, pageSize int) ([]*Calendar, error) {
+func (c *Client) ListCalendars(ctx context.Context, page, pageSize int) ([]*Calendar, error) {
 	v := url.Values{}
 	v.Set("Page", strconv.Itoa(page))
 	if pageSize > 0 {
 		v.Set("PageSize", strconv.Itoa(pageSize))
 	}
 
-	req, err := c.newRequest(http.MethodGet, calendarPath+"?"+v.Encode(), nil)
+	req, err := c.newRequest(ctx, http.MethodGet, calendarPath+"?"+v.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +61,7 @@ func (c *Client) ListCalendars(page, pageSize int) ([]*Calendar, error) {
 		resp
 		Calendars []*Calendar
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 
@@ -73,7 +74,7 @@ type CalendarEventFilter struct {
 	Page, PageSize int
 }
 
-func (c *Client) ListCalendarEvents(calendarID string, filter *CalendarEventFilter) ([]*CalendarEvent, error) {
+func (c *Client) ListCalendarEvents(ctx context.Context, calendarID string, filter *CalendarEventFilter) ([]*CalendarEvent, error) {
 	v := url.Values{}
 	v.Set("Start", strconv.FormatInt(filter.Start, 10))
 	v.Set("End", strconv.FormatInt(filter.End, 10))
@@ -83,7 +84,7 @@ func (c *Client) ListCalendarEvents(calendarID string, filter *CalendarEventFilt
 		v.Set("PageSize", strconv.Itoa(filter.PageSize))
 	}
 
-	req, err := c.newRequest(http.MethodGet, calendarPath+"/"+calendarID+"/events?"+v.Encode(), nil)
+	req, err := c.newRequest(ctx, http.MethodGet, calendarPath+"/"+calendarID+"/events?"+v.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +93,7 @@ func (c *Client) ListCalendarEvents(calendarID string, filter *CalendarEventFilt
 		resp
 		Events []*CalendarEvent
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 

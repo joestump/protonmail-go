@@ -1,6 +1,7 @@
 package protonmail
 
 import (
+	"context"
 	"net/http"
 )
 
@@ -20,8 +21,8 @@ type User struct {
 	Keys       []*PrivateKey
 }
 
-func (c *Client) GetCurrentUser() (*User, error) {
-	req, err := c.newRequest(http.MethodGet, "/users", nil)
+func (c *Client) GetCurrentUser(ctx context.Context) (*User, error) {
+	req, err := c.newRequest(ctx, http.MethodGet, "/users", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +31,7 @@ func (c *Client) GetCurrentUser() (*User, error) {
 		resp
 		User *User
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 

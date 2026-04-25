@@ -1,6 +1,7 @@
 package protonmail
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 )
@@ -160,12 +161,12 @@ type EventContact struct {
 	Contact *Contact
 }
 
-func (c *Client) GetEvent(last string) (*Event, error) {
+func (c *Client) GetEvent(ctx context.Context, last string) (*Event, error) {
 	if last == "" {
 		last = "latest"
 	}
 
-	req, err := c.newRequest(http.MethodGet, "/events/"+last, nil)
+	req, err := c.newRequest(ctx, http.MethodGet, "/events/"+last, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +175,7 @@ func (c *Client) GetEvent(last string) (*Event, error) {
 		resp
 		*Event
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 

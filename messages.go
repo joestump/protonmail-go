@@ -2,6 +2,7 @@ package protonmail
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"errors"
 	"io"
@@ -166,7 +167,7 @@ type MessageFilter struct {
 	ExternalID   string
 }
 
-func (c *Client) ListMessages(filter *MessageFilter) (total int, messages []*Message, err error) {
+func (c *Client) ListMessages(ctx context.Context, filter *MessageFilter) (total int, messages []*Message, err error) {
 	v := url.Values{}
 	if filter.Page != 0 {
 		v.Set("Page", strconv.Itoa(filter.Page))
@@ -196,7 +197,7 @@ func (c *Client) ListMessages(filter *MessageFilter) (total int, messages []*Mes
 		v.Set("ExternalID", filter.ExternalID)
 	}
 
-	req, err := c.newRequest(http.MethodGet, "/messages?"+v.Encode(), nil)
+	req, err := c.newRequest(ctx, http.MethodGet, "/messages?"+v.Encode(), nil)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -206,7 +207,7 @@ func (c *Client) ListMessages(filter *MessageFilter) (total int, messages []*Mes
 		Total    int
 		Messages []*Message
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return 0, nil, err
 	}
 
@@ -219,12 +220,12 @@ type MessageCount struct {
 	Unread  int
 }
 
-func (c *Client) CountMessages(address string) ([]*MessageCount, error) {
+func (c *Client) CountMessages(ctx context.Context, address string) ([]*MessageCount, error) {
 	v := url.Values{}
 	if address != "" {
 		v.Set("Address", address)
 	}
-	req, err := c.newRequest(http.MethodGet, "/messages/count?"+v.Encode(), nil)
+	req, err := c.newRequest(ctx, http.MethodGet, "/messages/count?"+v.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -233,15 +234,15 @@ func (c *Client) CountMessages(address string) ([]*MessageCount, error) {
 		resp
 		Counts []*MessageCount
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 
 	return respData.Counts, nil
 }
 
-func (c *Client) GetMessage(id string) (*Message, error) {
-	req, err := c.newRequest(http.MethodGet, "/messages/"+id, nil)
+func (c *Client) GetMessage(ctx context.Context, id string) (*Message, error) {
+	req, err := c.newRequest(ctx, http.MethodGet, "/messages/"+id, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -250,7 +251,7 @@ func (c *Client) GetMessage(id string) (*Message, error) {
 		resp
 		Message *Message
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 
@@ -259,7 +260,7 @@ func (c *Client) GetMessage(id string) (*Message, error) {
 
 // CreateDraftMessage creates a new draft message. ToList, CCList, BCCList,
 // Subject, Body and AddressID are required in msg.
-func (c *Client) CreateDraftMessage(msg *Message, parentID string) (*Message, error) {
+func (c *Client) CreateDraftMessage(ctx context.Context, msg *Message, parentID string) (*Message, error) {
 	var actionPtr *MessageAction
 	if parentID != "" {
 		// TODO: support other actions
@@ -272,7 +273,7 @@ func (c *Client) CreateDraftMessage(msg *Message, parentID string) (*Message, er
 		ParentID string         `json:",omitempty"`
 		Action   *MessageAction `json:",omitempty"`
 	}{msg, parentID, actionPtr}
-	req, err := c.newJSONRequest(http.MethodPost, "/messages", &reqData)
+	req, err := c.newJSONRequest(ctx, http.MethodPost, "/messages", &reqData)
 	if err != nil {
 		return nil, err
 	}
@@ -281,18 +282,18 @@ func (c *Client) CreateDraftMessage(msg *Message, parentID string) (*Message, er
 		resp
 		Message *Message
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 
 	return respData.Message, nil
 }
 
-func (c *Client) UpdateDraftMessage(msg *Message) (*Message, error) {
+func (c *Client) UpdateDraftMessage(ctx context.Context, msg *Message) (*Message, error) {
 	reqData := struct {
 		Message *Message
 	}{msg}
-	req, err := c.newJSONRequest(http.MethodPut, "/messages/"+msg.ID, &reqData)
+	req, err := c.newJSONRequest(ctx, http.MethodPut, "/messages/"+msg.ID, &reqData)
 	if err != nil {
 		return nil, err
 	}
@@ -301,68 +302,68 @@ func (c *Client) UpdateDraftMessage(msg *Message) (*Message, error) {
 		resp
 		Message *Message
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 
 	return respData.Message, nil
 }
 
-func (c *Client) doMessages(action string, ids []string) error {
+func (c *Client) doMessages(ctx context.Context, action string, ids []string) error {
 	reqData := struct {
 		IDs []string
 	}{ids}
-	req, err := c.newJSONRequest(http.MethodPut, "/messages/"+action, &reqData)
+	req, err := c.newJSONRequest(ctx, http.MethodPut, "/messages/"+action, &reqData)
 	if err != nil {
 		return err
 	}
 
 	// TODO: the response contains one response per message
-	return c.doJSON(req, nil)
+	return c.doJSON(ctx, req, nil)
 }
 
-func (c *Client) MarkMessagesRead(ids []string) error {
-	return c.doMessages("read", ids)
+func (c *Client) MarkMessagesRead(ctx context.Context, ids []string) error {
+	return c.doMessages(ctx, "read", ids)
 }
 
-func (c *Client) MarkMessagesUnread(ids []string) error {
-	return c.doMessages("unread", ids)
+func (c *Client) MarkMessagesUnread(ctx context.Context, ids []string) error {
+	return c.doMessages(ctx, "unread", ids)
 }
 
-func (c *Client) DeleteMessages(ids []string) error {
-	return c.doMessages("delete", ids)
+func (c *Client) DeleteMessages(ctx context.Context, ids []string) error {
+	return c.doMessages(ctx, "delete", ids)
 }
 
-func (c *Client) UndeleteMessages(ids []string) error {
-	return c.doMessages("undelete", ids)
+func (c *Client) UndeleteMessages(ctx context.Context, ids []string) error {
+	return c.doMessages(ctx, "undelete", ids)
 }
 
-func (c *Client) LabelMessages(labelID string, ids []string) error {
+func (c *Client) LabelMessages(ctx context.Context, labelID string, ids []string) error {
 	reqData := struct {
 		LabelID string
 		IDs     []string
 	}{labelID, ids}
-	req, err := c.newJSONRequest(http.MethodPut, "/messages/label", &reqData)
+	req, err := c.newJSONRequest(ctx, http.MethodPut, "/messages/label", &reqData)
 	if err != nil {
 		return err
 	}
 
 	// TODO: the response contains one response per message
-	return c.doJSON(req, nil)
+	return c.doJSON(ctx, req, nil)
 }
 
-func (c *Client) UnlabelMessages(labelID string, ids []string) error {
+func (c *Client) UnlabelMessages(ctx context.Context, labelID string, ids []string) error {
 	reqData := struct {
 		LabelID string
 		IDs     []string
 	}{labelID, ids}
-	req, err := c.newJSONRequest(http.MethodPut, "/messages/unlabel", &reqData)
+	req, err := c.newJSONRequest(ctx, http.MethodPut, "/messages/unlabel", &reqData)
 	if err != nil {
 		return err
 	}
 
 	// TODO: the response contains one response per message
-	return c.doJSON(req, nil)
+	return c.doJSON(ctx, req, nil)
 }
 
 type MessageKeyPacket struct {
@@ -581,8 +582,8 @@ type OutgoingMessage struct {
 	Packages []*MessagePackageSet
 }
 
-func (c *Client) SendMessage(msg *OutgoingMessage) (sent, parent *Message, err error) {
-	req, err := c.newJSONRequest(http.MethodPost, "/messages/"+msg.ID, msg)
+func (c *Client) SendMessage(ctx context.Context, msg *OutgoingMessage) (sent, parent *Message, err error) {
+	req, err := c.newJSONRequest(ctx, http.MethodPost, "/messages/"+msg.ID, msg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -591,7 +592,7 @@ func (c *Client) SendMessage(msg *OutgoingMessage) (sent, parent *Message, err e
 		resp
 		Sent, Parent *Message
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, nil, err
 	}
 

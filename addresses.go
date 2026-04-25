@@ -1,6 +1,7 @@
 package protonmail
 
 import (
+	"context"
 	"net/http"
 )
 
@@ -42,9 +43,9 @@ type Address struct {
 	Keys        []*PrivateKey
 }
 
-func (c *Client) ListAddresses() ([]*Address, error) {
+func (c *Client) ListAddresses(ctx context.Context) ([]*Address, error) {
 	// TODO: Page, PageSize
-	req, err := c.newRequest(http.MethodGet, "/addresses", nil)
+	req, err := c.newRequest(ctx, http.MethodGet, "/addresses", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +54,7 @@ func (c *Client) ListAddresses() ([]*Address, error) {
 		resp
 		Addresses []*Address
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(ctx, req, &respData); err != nil {
 		return nil, err
 	}
 
