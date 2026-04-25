@@ -162,7 +162,7 @@ func TestReAuthRetry(t *testing.T) {
 	c.accessToken = "stale-token"
 
 	var reauthCalls int32
-	c.ReAuth = func(ctx context.Context) error {
+	c.reauth = func(ctx context.Context) error {
 		atomic.AddInt32(&reauthCalls, 1)
 		c.accessToken = "fresh-token"
 		return nil

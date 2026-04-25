@@ -5,20 +5,28 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
-
-	"log"
 )
 
 const Version = 3
 
 const headerAPIVersion = "X-Pm-Apiversion"
+
+// defaultBaseURL is the production Proton API endpoint used when WithBaseURL is not supplied.
+const defaultBaseURL = "https://mail.proton.me/api"
+
+// libraryVersion identifies this client library in the default User-Agent.
+// Hardcoded for now; later issues may derive from build info.
+const libraryVersion = "0.2.0-dev"
 
 type resp struct {
 	Code int
@@ -58,18 +66,43 @@ func (t Timestamp) Time() time.Time {
 	return time.Unix(int64(t), 0)
 }
 
-// Client is a ProtonMail API client.
+// Client is a ProtonMail API client. Construct with NewClient; the zero value
+// is not usable.
 type Client struct {
-	RootURL    string
-	AppVersion string
-	Debug      bool
+	baseURL    string
+	appVersion string
+	userAgent  string
+	debug      bool
 
-	HTTPClient *http.Client
-	ReAuth     func(ctx context.Context) error
+	httpClient *http.Client
+	reauth     func(ctx context.Context) error
+	logger     *slog.Logger
 
 	uid         string
 	accessToken string
 	keyRing     openpgp.EntityList
+}
+
+// NewClient constructs a Client. WithAppVersion is required; all other options
+// have sensible defaults (base URL = https://mail.proton.me/api,
+// User-Agent = "protonmail-go/<version>", logger discards, HTTP client =
+// http.DefaultClient).
+func NewClient(opts ...Option) (*Client, error) {
+	c := &Client{
+		baseURL:    defaultBaseURL,
+		httpClient: http.DefaultClient,
+		userAgent:  fmt.Sprintf("protonmail-go/%s (+https://github.com/joestump/protonmail-go)", libraryVersion),
+		logger:     slog.New(slog.DiscardHandler),
+	}
+	for _, opt := range opts {
+		if err := opt(c); err != nil {
+			return nil, err
+		}
+	}
+	if c.appVersion == "" {
+		return nil, errors.New("NewClient: app version is required (use WithAppVersion)")
+	}
+	return c, nil
 }
 
 func (c *Client) setRequestAuthorization(req *http.Request) {
@@ -80,16 +113,16 @@ func (c *Client) setRequestAuthorization(req *http.Request) {
 }
 
 func (c *Client) newRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
-	req, err := http.NewRequestWithContext(ctx, method, c.RootURL+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
 	if err != nil {
 		return nil, err
 	}
 
-	if c.Debug {
+	if c.debug {
 		log.Printf(">> %v %v\n", req.Method, req.URL.Path)
 	}
 
-	req.Header.Set("X-Pm-Appversion", c.AppVersion)
+	req.Header.Set("X-Pm-Appversion", c.appVersion)
 	req.Header.Set(headerAPIVersion, strconv.Itoa(Version))
 	c.setRequestAuthorization(req)
 	return req, nil
@@ -107,7 +140,7 @@ func (c *Client) newJSONRequest(ctx context.Context, method, path string, body i
 		return nil, err
 	}
 
-	if c.Debug {
+	if c.debug {
 		log.Print(string(b))
 	}
 
@@ -119,14 +152,11 @@ func (c *Client) newJSONRequest(ctx context.Context, method, path string, body i
 }
 
 func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, error) {
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:101.0) Gecko/20100101 Firefox/101.0")
+	req.Header.Set("User-Agent", c.userAgent)
 
-	httpClient := c.HTTPClient
-	if httpClient == nil {
-		httpClient = http.DefaultClient
-	}
-
-	resp, err := httpClient.Do(req)
+	// c.httpClient is guaranteed non-nil: NewClient defaults it to
+	// http.DefaultClient and WithHTTPClient(nil) errors at construction.
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return resp, err
 	}
@@ -134,10 +164,10 @@ func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, err
 	// Check if access token has expired
 	_, hasAuth := req.Header["Authorization"]
 	canRetry := req.Body == nil || req.GetBody != nil
-	if resp.StatusCode == http.StatusUnauthorized && hasAuth && c.ReAuth != nil && canRetry {
+	if resp.StatusCode == http.StatusUnauthorized && hasAuth && c.reauth != nil && canRetry {
 		resp.Body.Close()
 		c.accessToken = ""
-		if err := c.ReAuth(ctx); err != nil {
+		if err := c.reauth(ctx); err != nil {
 			return resp, err
 		}
 		c.setRequestAuthorization(req) // Access token has changed
@@ -171,7 +201,7 @@ func (c *Client) doJSON(ctx context.Context, req *http.Request, respData interfa
 		return err
 	}
 
-	if c.Debug {
+	if c.debug {
 		log.Printf("<< %v %v", req.Method, req.URL.Path)
 		log.Printf("%#v", respData)
 	}
