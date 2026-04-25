@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -120,11 +119,16 @@ func (c *Client) GetAttachment(ctx context.Context, id string) (io.ReadCloser, e
 	}
 
 	if resp.StatusCode/100 != 2 {
-		// Drain (capped) and close the body before returning the error so the
+		// Read up to 64KB of the error body for diagnostic context, then drain
+		// (capped) and close the body before returning the error so the
 		// underlying TCP connection can be reused and we don't leak.
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 		drainAndClose(resp.Body)
-		// TODO #3: replace with a typed *HTTPError once issue #3 lands.
-		return nil, fmt.Errorf("cannot get attachment %q: HTTP %d %s", id, resp.StatusCode, resp.Status)
+		return nil, &HTTPError{
+			StatusCode: resp.StatusCode,
+			Status:     resp.Status,
+			Body:       body,
+		}
 	}
 
 	return resp.Body, nil

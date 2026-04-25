@@ -39,17 +39,17 @@ func decodeModulus(msg string) ([]byte, error) {
 
 	modulusKeyring, err := openpgp.ReadArmoredKeyRing(bytes.NewReader([]byte(modulusPubkey)))
 	if err != nil {
-		return nil, fmt.Errorf("cannot read modulus pubkey: %v", err)
+		return nil, fmt.Errorf("cannot read modulus pubkey: %w", err)
 	}
 
 	_, err = openpgp.CheckDetachedSignature(modulusKeyring, bytes.NewReader(block.Bytes), block.ArmoredSignature.Body, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check modulus signature: %v", err)
+		return nil, fmt.Errorf("failed to check modulus signature: %w", err)
 	}
 
 	b, err := base64.StdEncoding.DecodeString(string(block.Plaintext))
 	if err != nil {
-		return nil, fmt.Errorf("malformed SRP modulus: %v", err)
+		return nil, fmt.Errorf("malformed SRP modulus: %w", err)
 	}
 
 	return b, nil
@@ -162,7 +162,7 @@ func generateProofs(l int, hash func([]byte) []byte, modulusBytes, hashedBytes, 
 func (p *proofs) VerifyServerProof(serverProofString string) error {
 	serverProof, err := base64.StdEncoding.DecodeString(serverProofString)
 	if err != nil {
-		return fmt.Errorf("malformed SRP server proof: %v", err)
+		return fmt.Errorf("malformed SRP server proof: %w", err)
 	}
 
 	if subtle.ConstantTimeCompare(p.expectedServerProof, serverProof) != 1 {
@@ -180,12 +180,12 @@ func srp(password []byte, info *AuthInfo) (*proofs, error) {
 
 	serverEphemeral, err := base64.StdEncoding.DecodeString(info.serverEphemeral)
 	if err != nil {
-		return nil, fmt.Errorf("malformed SRP server ephemeral: %v", err)
+		return nil, fmt.Errorf("malformed SRP server ephemeral: %w", err)
 	}
 
 	salt, err := base64.StdEncoding.DecodeString(info.salt)
 	if err != nil {
-		return nil, fmt.Errorf("malformed SRP salt: %v", err)
+		return nil, fmt.Errorf("malformed SRP salt: %w", err)
 	}
 
 	hashed, err := hashPassword(info.version, password, salt, modulus)

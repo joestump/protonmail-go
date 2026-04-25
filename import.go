@@ -56,7 +56,7 @@ func (imp *Importer) ImportMessage(ctx context.Context, key string) (io.Writer, 
 
 func (imp *Importer) close() error {
 	if imp.closed {
-		return fmt.Errorf("protonmail: importer already closed")
+		return ErrImporterClosed
 	}
 	imp.closed = true
 
@@ -137,11 +137,11 @@ func (c *Client) Import(ctx context.Context, metadata map[string]*Message) (*Imp
 	hdr.Set("Content-Type", "application/json")
 	metadataWriter, err := mw.CreatePart(hdr)
 	if err != nil {
-		pw.CloseWithError(fmt.Errorf("protonmail: failed to write metadata"))
+		pw.CloseWithError(fmt.Errorf("protonmail: failed to write metadata: %w", err))
 		return nil, err
 	}
 	if err := json.NewEncoder(metadataWriter).Encode(metadata); err != nil {
-		pw.CloseWithError(fmt.Errorf("protonmail: failed to write metadata"))
+		pw.CloseWithError(fmt.Errorf("protonmail: failed to write metadata: %w", err))
 		return nil, err
 	}
 
