@@ -120,7 +120,11 @@ func (c *Client) GetAttachment(ctx context.Context, id string) (io.ReadCloser, e
 	}
 
 	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("cannot get attachment %q: %v %v", id, resp.Status, resp.StatusCode)
+		// Drain (capped) and close the body before returning the error so the
+		// underlying TCP connection can be reused and we don't leak.
+		drainAndClose(resp.Body)
+		// TODO #3: replace with a typed *HTTPError once issue #3 lands.
+		return nil, fmt.Errorf("cannot get attachment %q: HTTP %d %s", id, resp.StatusCode, resp.Status)
 	}
 
 	return resp.Body, nil
