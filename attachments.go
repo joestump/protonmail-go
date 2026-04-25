@@ -15,20 +15,26 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
 )
 
+// AttachmentKey pairs an attachment ID with a base64-encoded session key
+// and the cipher algorithm name (e.g. "aes256").
 type AttachmentKey struct {
 	ID   string
 	Key  string
 	Algo string
 }
 
+// Attachment is the metadata for an attachment associated with a message.
+// The payload is fetched separately via GetAttachment and decrypted with
+// Read.
 type Attachment struct {
-	ID         string
-	MessageID  string
-	Name       string
-	Size       int
-	MIMEType   string
-	ContentID  string
-	KeyPackets string // encrypted with the user's key, base64-encoded
+	ID        string
+	MessageID string
+	Name      string
+	Size      int
+	MIMEType  string
+	ContentID string
+	// KeyPackets is the session key encrypted to the user's key, base64-encoded.
+	KeyPackets string
 	//Headers    map[string]string
 	Signature string
 
@@ -68,8 +74,9 @@ func (att *Attachment) GenerateKey(to []*openpgp.Entity) (*packet.EncryptedKey, 
 	return unencryptedKey, nil
 }
 
-// Encrypt encrypts to w the data that will be written to the returned
-// io.WriteCloser.
+// Encrypt encrypts plaintext written to the returned io.WriteCloser and
+// emits the ciphertext to the supplied ciphertext writer. Close the
+// returned WriteCloser to flush the encryption stream.
 //
 // Prior to calling Encrypt, an attachment key must have been generated with
 // GenerateKey.
@@ -91,6 +98,9 @@ func (att *Attachment) Encrypt(ciphertext io.Writer, signed *openpgp.Entity) (cl
 	return symetricallyEncrypt(ciphertext, att.unencryptedKey, nil, hints, config)
 }
 
+// Read decrypts the attachment payload streamed from ciphertext, using
+// att.KeyPackets and the supplied keyring. If att has no key packets the
+// data is returned verbatim. prompt is invoked when a private key is locked.
 func (att *Attachment) Read(ciphertext io.Reader, keyring openpgp.KeyRing, prompt openpgp.PromptFunction) (*openpgp.MessageDetails, error) {
 	if len(att.KeyPackets) == 0 {
 		return &openpgp.MessageDetails{

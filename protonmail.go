@@ -1,4 +1,3 @@
-// Package protonmail implements a ProtonMail API client.
 package protonmail
 
 import (
@@ -16,6 +15,8 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp"
 )
 
+// Version is the Proton API version this client speaks. It is sent on every
+// request as the X-Pm-Apiversion header.
 const Version = 3
 
 const headerAPIVersion = "X-Pm-Apiversion"
@@ -32,6 +33,10 @@ type resp struct {
 	*RawAPIError
 }
 
+// Err returns a non-nil *APIError when the response carried a Proton
+// error envelope, or nil otherwise. It is also promoted onto exported
+// types that embed resp (for example AuthInfoResp), so callers can
+// invoke Err() on those response types directly.
 func (r *resp) Err() error {
 	if err := r.RawAPIError; err != nil {
 		return &APIError{
@@ -46,12 +51,25 @@ type maybeError interface {
 	Err() error
 }
 
+// RawAPIError is the JSON shape Proton uses to carry a human-readable error
+// message in a response envelope. Most callers should not need to handle this
+// directly — it is wrapped into an *APIError before being surfaced.
 type RawAPIError struct {
 	Message string `json:"Error"`
 }
 
+// APIError is an application-layer error returned by the Proton API: a
+// non-2xx response whose body parsed as a Proton error envelope. It carries
+// Proton's numeric "Code" (a 4-digit application code, distinct from the HTTP
+// status) and a human-readable Message. Use errors.Is against the package
+// sentinels (ErrUnauthorized, ErrNotFound, ErrRateLimited) rather than
+// switching on Code directly; the sentinel check walks through to the wrapped
+// *HTTPError when Proton's application code is unknown.
 type APIError struct {
-	Code    int
+	// Code is Proton's application-layer error code. It is NOT an HTTP
+	// status; see errors.go for the small set the package recognises.
+	Code int
+	// Message is Proton's human-readable error description.
 	Message string
 
 	// HTTPError, if non-nil, carries the underlying HTTP-level failure
@@ -70,8 +88,11 @@ func (err *APIError) Error() string {
 	return fmt.Sprintf("[%v] %v", err.Code, err.Message)
 }
 
+// Timestamp is a Unix timestamp in seconds, as returned by the Proton API.
+// Use Time to convert to a time.Time.
 type Timestamp int64
 
+// Time returns the Timestamp as a time.Time in the local time zone.
 func (t Timestamp) Time() time.Time {
 	return time.Unix(int64(t), 0)
 }
@@ -95,7 +116,8 @@ type Client struct {
 // NewClient constructs a Client. WithAppVersion is required; all other options
 // have sensible defaults (base URL = https://mail.proton.me/api,
 // User-Agent = "protonmail-go/<version>", logger discards, HTTP client =
-// http.DefaultClient).
+// http.DefaultClient). Options are applied in order; the first option that
+// returns an error aborts construction.
 func NewClient(opts ...Option) (*Client, error) {
 	c := &Client{
 		baseURL:    defaultBaseURL,

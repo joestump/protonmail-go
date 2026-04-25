@@ -13,6 +13,9 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
 )
 
+// Contact is a single entry in the user's address book. ContactEmails and
+// Cards are populated only by GetContact (and ListContactsExport for Cards),
+// not by the lighter ListContacts.
 type Contact struct {
 	ID         string
 	Name       string
@@ -27,8 +30,11 @@ type Contact struct {
 	Cards         []*ContactCard
 }
 
+// ContactEmailDefaults is a bitmask of "default for ..." flags carried on a
+// ContactEmail (e.g. default From, default sign).
 type ContactEmailDefaults int
 
+// ContactEmail is a single email address attached to a Contact.
 type ContactEmail struct {
 	ID        string
 	Email     string
@@ -42,15 +48,24 @@ type ContactEmail struct {
 	Name string
 }
 
+// ContactCardType describes how a vCard payload is protected on a Contact:
+// cleartext, encrypted, signed, or both encrypted and signed.
 type ContactCardType int
 
 const (
+	// ContactCardCleartext is an unprotected vCard payload.
 	ContactCardCleartext ContactCardType = iota
+	// ContactCardEncrypted is a vCard encrypted to the user.
 	ContactCardEncrypted
+	// ContactCardSigned is a cleartext vCard with a detached signature.
 	ContactCardSigned
+	// ContactCardEncryptedAndSigned is an encrypted vCard with a detached
+	// signature over the original plaintext.
 	ContactCardEncryptedAndSigned
 )
 
+// Signed reports whether t indicates a signed card (signed or
+// encrypted-and-signed).
 func (t ContactCardType) Signed() bool {
 	switch t {
 	case ContactCardSigned, ContactCardEncryptedAndSigned:
@@ -60,6 +75,8 @@ func (t ContactCardType) Signed() bool {
 	}
 }
 
+// Encrypted reports whether t indicates an encrypted card (encrypted or
+// encrypted-and-signed).
 func (t ContactCardType) Encrypted() bool {
 	switch t {
 	case ContactCardEncrypted, ContactCardEncryptedAndSigned:
@@ -69,12 +86,19 @@ func (t ContactCardType) Encrypted() bool {
 	}
 }
 
+// ContactCard is a vCard payload (Data) carried on a Contact, optionally
+// encrypted and/or detached-signed (Signature). Its interpretation is
+// governed by Type; use Read to transparently decrypt and verify against a
+// key ring.
 type ContactCard struct {
 	Type      ContactCardType
 	Data      string
 	Signature string
 }
 
+// NewEncryptedContactCard returns a ContactCard whose Data is the vCard read
+// from r, encrypted to the recipients in to. If signer is non-nil the card
+// is also detached-signed and the type is set to ContactCardEncryptedAndSigned.
 func NewEncryptedContactCard(r io.Reader, to []*openpgp.Entity, signer *openpgp.Entity) (*ContactCard, error) {
 	// TODO: sign and encrypt at the same time
 
@@ -122,6 +146,8 @@ func NewEncryptedContactCard(r io.Reader, to []*openpgp.Entity, signer *openpgp.
 	return card, nil
 }
 
+// NewSignedContactCard returns a ContactCard whose Data is the cleartext
+// vCard read from r and Signature is a detached signature over it.
 func NewSignedContactCard(r io.Reader, signer *openpgp.Entity) (*ContactCard, error) {
 	var msg, sig bytes.Buffer
 	r = io.TeeReader(r, &msg)
@@ -163,6 +189,10 @@ func (r *detachedSignatureReader) Read(p []byte) (n int, err error) {
 	return
 }
 
+// Read decrypts and verifies card against keyring and returns OpenPGP
+// message details whose UnverifiedBody yields the card's plaintext vCard
+// payload. For unencrypted cards the body is yielded verbatim; signature
+// verification still runs when the card is signed.
 func (card *ContactCard) Read(keyring openpgp.KeyRing) (*openpgp.MessageDetails, error) {
 	if !card.Type.Encrypted() {
 		md := &openpgp.MessageDetails{
@@ -211,15 +241,22 @@ func (card *ContactCard) Read(keyring openpgp.KeyRing) (*openpgp.MessageDetails,
 	return md, nil
 }
 
+// ContactExport is a Contact represented purely by its raw cards, as
+// returned by ListContactsExport. It is the canonical bulk-export shape.
 type ContactExport struct {
 	ID    string
 	Cards []*ContactCard
 }
 
+// ContactImport is the per-contact payload submitted to CreateContacts.
+// Cards are encrypted and/or signed using the helpers in this package.
 type ContactImport struct {
 	Cards []*ContactCard
 }
 
+// ListContacts returns a paginated list of contacts. ContactEmails and
+// Cards are NOT populated on the returned contacts — use GetContact for the
+// full record, or ListContactsExport for the bulk-export shape.
 func (c *Client) ListContacts(ctx context.Context, page, pageSize int) (total int, contacts []*Contact, err error) {
 	v := url.Values{}
 	v.Set("Page", strconv.Itoa(page))
@@ -244,6 +281,9 @@ func (c *Client) ListContacts(ctx context.Context, page, pageSize int) (total in
 	return respData.Total, respData.Contacts, nil
 }
 
+// ListContactsEmails returns a paginated list of all email addresses across
+// the user's contacts. Each ContactEmail.ContactID identifies the parent
+// Contact.
 func (c *Client) ListContactsEmails(ctx context.Context, page, pageSize int) (total int, emails []*ContactEmail, err error) {
 	v := url.Values{}
 	v.Set("Page", strconv.Itoa(page))
@@ -268,6 +308,8 @@ func (c *Client) ListContactsEmails(ctx context.Context, page, pageSize int) (to
 	return respData.Total, respData.ContactEmails, nil
 }
 
+// ListContactsExport returns a paginated list of contacts in their raw
+// card-only export shape, suitable for backup or migration.
 func (c *Client) ListContactsExport(ctx context.Context, page, pageSize int) (total int, contacts []*ContactExport, err error) {
 	v := url.Values{}
 	v.Set("Page", strconv.Itoa(page))
@@ -292,6 +334,8 @@ func (c *Client) ListContactsExport(ctx context.Context, page, pageSize int) (to
 	return respData.Total, respData.Contacts, nil
 }
 
+// GetContact fetches a single contact by ID, including its ContactEmails
+// and Cards. Returns a wrapped ErrNotFound if no such contact exists.
 func (c *Client) GetContact(ctx context.Context, id string) (*Contact, error) {
 	req, err := c.newRequest(ctx, http.MethodGet, "/contacts/"+id, nil)
 	if err != nil {
@@ -309,6 +353,9 @@ func (c *Client) GetContact(ctx context.Context, id string) (*Contact, error) {
 	return respData.Contact, nil
 }
 
+// CreateContactResp is the per-contact result returned by CreateContacts.
+// Index is the position in the request slice; Response carries the created
+// Contact or a per-item error.
 type CreateContactResp struct {
 	Index    int
 	Response struct {
@@ -317,10 +364,15 @@ type CreateContactResp struct {
 	}
 }
 
+// Err returns the per-contact API error from the response, or nil if the
+// individual create succeeded.
 func (resp *CreateContactResp) Err() error {
 	return resp.Response.Err()
 }
 
+// CreateContacts creates a batch of contacts. Each request element gets a
+// matching CreateContactResp; per-item failures are surfaced via Err on the
+// individual response, not as a top-level error.
 func (c *Client) CreateContacts(ctx context.Context, contacts []*ContactImport) ([]*CreateContactResp, error) {
 	reqData := struct {
 		Contacts                  []*ContactImport
@@ -342,6 +394,8 @@ func (c *Client) CreateContacts(ctx context.Context, contacts []*ContactImport) 
 	return respData.Responses, nil
 }
 
+// UpdateContact replaces the cards on the contact identified by id with
+// those in contact. Returns the updated Contact.
 func (c *Client) UpdateContact(ctx context.Context, id string, contact *ContactImport) (*Contact, error) {
 	req, err := c.newJSONRequest(ctx, http.MethodPut, "/contacts/"+id, contact)
 	if err != nil {
@@ -359,6 +413,8 @@ func (c *Client) UpdateContact(ctx context.Context, id string, contact *ContactI
 	return respData.Contact, nil
 }
 
+// DeleteContactResp is the per-contact result returned by DeleteContacts.
+// Use Err to test whether the individual delete succeeded.
 type DeleteContactResp struct {
 	ID       string
 	Response struct {
@@ -366,10 +422,14 @@ type DeleteContactResp struct {
 	}
 }
 
+// Err returns the per-contact API error from the response, or nil if the
+// individual delete succeeded.
 func (resp *DeleteContactResp) Err() error {
 	return resp.Response.Err()
 }
 
+// DeleteContacts deletes a batch of contacts by ID. Per-item failures are
+// surfaced via Err on the individual response, not as a top-level error.
 func (c *Client) DeleteContacts(ctx context.Context, ids []string) ([]*DeleteContactResp, error) {
 	reqData := struct {
 		IDs []string
@@ -390,6 +450,8 @@ func (c *Client) DeleteContacts(ctx context.Context, ids []string) ([]*DeleteCon
 	return respData.Responses, nil
 }
 
+// DeleteAllContacts deletes every contact in the user's address book. There
+// is no undo.
 func (c *Client) DeleteAllContacts(ctx context.Context) error {
 	req, err := c.newRequest(ctx, http.MethodDelete, "/contacts", nil)
 	if err != nil {
