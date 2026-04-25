@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -307,7 +307,7 @@ func unlockPrivateKey(key *PrivateKey, userKeyRing openpgp.EntityList, keySalt [
 	return entity, nil
 }
 
-func unlockKeyRing(keys []*PrivateKey, userKeyRing openpgp.EntityList, keySalts map[string][]byte, passphraseBytes []byte) (openpgp.EntityList, error) {
+func (c *Client) unlockKeyRing(keys []*PrivateKey, userKeyRing openpgp.EntityList, keySalts map[string][]byte, passphraseBytes []byte) (openpgp.EntityList, error) {
 	var keyRing openpgp.EntityList
 	for _, key := range keys {
 		if key.Active != 1 {
@@ -316,7 +316,11 @@ func unlockKeyRing(keys []*PrivateKey, userKeyRing openpgp.EntityList, keySalts 
 
 		entity, err := unlockPrivateKey(key, userKeyRing, keySalts[key.ID], passphraseBytes)
 		if err != nil {
-			log.Printf("warning: failed to unlock key %v: %v", key.Fingerprint, err)
+			c.logger.Warn("protonmail: failed to unlock key",
+				slog.String("key_id", key.ID),
+				slog.String("fingerprint", key.Fingerprint),
+				slog.Any("error", err),
+			)
 			continue
 		}
 
@@ -338,7 +342,7 @@ func (c *Client) Unlock(ctx context.Context, auth *Auth, keySalts map[string][]b
 		return nil, err
 	}
 
-	userKeyRing, err := unlockKeyRing(u.Keys, nil, keySalts, []byte(passphrase))
+	userKeyRing, err := c.unlockKeyRing(u.Keys, nil, keySalts, []byte(passphrase))
 	if err != nil {
 		return nil, err
 	}
@@ -350,9 +354,13 @@ func (c *Client) Unlock(ctx context.Context, auth *Auth, keySalts map[string][]b
 
 	var keyRing openpgp.EntityList
 	for _, addr := range addrs {
-		addrKeyRing, err := unlockKeyRing(addr.Keys, userKeyRing, keySalts, []byte(passphrase))
+		addrKeyRing, err := c.unlockKeyRing(addr.Keys, userKeyRing, keySalts, []byte(passphrase))
 		if err != nil {
-			log.Printf("warning: failed to unlock address <%v>: %v", addr.Email, err)
+			c.logger.Warn("protonmail: failed to unlock address",
+				slog.String("address_id", addr.ID),
+				slog.String("email", addr.Email),
+				slog.Any("error", err),
+			)
 			continue
 		}
 

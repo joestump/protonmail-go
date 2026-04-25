@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -83,7 +82,6 @@ type Client struct {
 	baseURL    string
 	appVersion string
 	userAgent  string
-	debug      bool
 
 	httpClient *http.Client
 	reauth     func(ctx context.Context) error
@@ -129,9 +127,10 @@ func (c *Client) newRequest(ctx context.Context, method, path string, body io.Re
 		return nil, err
 	}
 
-	if c.debug {
-		log.Printf(">> %v %v\n", req.Method, req.URL.Path)
-	}
+	c.logger.Debug("protonmail: request",
+		slog.String("method", req.Method),
+		slog.String("path", req.URL.Path),
+	)
 
 	req.Header.Set("X-Pm-Appversion", c.appVersion)
 	req.Header.Set(headerAPIVersion, strconv.Itoa(Version))
@@ -151,9 +150,14 @@ func (c *Client) newJSONRequest(ctx context.Context, method, path string, body i
 		return nil, err
 	}
 
-	if c.debug {
-		log.Print(string(b))
-	}
+	// Body content is intentionally not logged: /auth carries ClientProof and
+	// /auth/refresh carries RefreshToken. Log only the byte size for sizing
+	// signal.
+	c.logger.Debug("protonmail: request body prepared",
+		slog.String("method", req.Method),
+		slog.String("path", req.URL.Path),
+		slog.Int("bytes", len(b)),
+	)
 
 	req.Header.Set("Content-Type", "application/json")
 	req.GetBody = func() (io.ReadCloser, error) {
@@ -185,10 +189,15 @@ func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, err
 	// the body can be re-read. If a 401 arrives with a non-replayable body
 	// (req.Body != nil && GetBody == nil) we silently skip the retry and
 	// surface the 401 to the caller — re-sending an already-consumed body
-	// would send an empty body and corrupt the request. TODO #6: log this
-	// case via the structured logger once it exists.
+	// would send an empty body and corrupt the request.
 	_, hasAuth := req.Header["Authorization"]
 	canRetry := req.Body == nil || req.GetBody != nil
+	if resp.StatusCode == http.StatusUnauthorized && hasAuth && !canRetry {
+		c.logger.Debug("protonmail: skipping 401 retry, request body not replayable",
+			slog.String("method", req.Method),
+			slog.String("path", req.URL.Path),
+		)
+	}
 	if resp.StatusCode == http.StatusUnauthorized && hasAuth && c.reauth != nil && canRetry {
 		drainAndClose(resp.Body)
 		c.accessToken = ""
@@ -262,9 +271,13 @@ func (c *Client) doJSON(ctx context.Context, req *http.Request, respData interfa
 				Message:   raw.RawAPIError.Message,
 				HTTPError: httpErr,
 			}
-			if c.debug {
-				log.Printf("<< %v %v: %v", req.Method, req.URL.Path, apiErr)
-			}
+			c.logger.Debug("protonmail: api error response",
+				slog.String("method", req.Method),
+				slog.String("path", req.URL.Path),
+				slog.Int("status", httpResp.StatusCode),
+				slog.Int("api_code", apiErr.Code),
+				slog.String("api_message", apiErr.Message),
+			)
 			return apiErr
 		}
 
@@ -275,16 +288,37 @@ func (c *Client) doJSON(ctx context.Context, req *http.Request, respData interfa
 		return err
 	}
 
-	if c.debug {
-		log.Printf("<< %v %v", req.Method, req.URL.Path)
-		log.Printf("%#v", respData)
-	}
+	// Response body is intentionally not logged: /auth and /auth/refresh
+	// responses carry AccessToken / RefreshToken / ServerProof. Structured
+	// metadata only.
+	c.logger.Debug("protonmail: response",
+		slog.String("method", req.Method),
+		slog.String("path", req.URL.Path),
+		slog.Int("status", httpResp.StatusCode),
+	)
 
 	if maybeError, ok := respData.(maybeError); ok {
 		if err := maybeError.Err(); err != nil {
-			log.Printf("request failed: %v %v: %v", req.Method, req.URL.String(), err)
+			c.logger.Debug("protonmail: request failed",
+				slog.String("method", req.Method),
+				slog.String("path", req.URL.Path),
+				slog.Any("error", err),
+			)
 			return err
 		}
 	}
 	return nil
+}
+
+// redactedHeaders returns a copy of h with values for sensitive headers
+// (Authorization, x-pm-uid) replaced by "[REDACTED]". Use when surfacing
+// request headers via the structured logger.
+func redactedHeaders(h http.Header) http.Header {
+	out := h.Clone()
+	for _, k := range []string{"Authorization", "x-pm-uid", "X-Pm-Uid"} {
+		if out.Get(k) != "" {
+			out.Set(k, "[REDACTED]")
+		}
+	}
+	return out
 }

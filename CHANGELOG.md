@@ -29,6 +29,11 @@ Note: pre-1.0 releases may break the API at any minor bump.
 - **BREAKING:** `Client.Debug` removed; replaced by `WithLogger(*slog.Logger)`.
   Verbose output is gated by log level on the supplied logger; coordinates
   with #6 (#5).
+- **BREAKING:** `Client.Debug` field removed; replace with
+  `WithLogger(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))`
+  for equivalent debug output (#6).
+- Removed: `import "log"` — all logging now flows through `*slog.Logger`
+  (#6).
 - Default User-Agent now identifies the library
   (`protonmail-go/<version>`) instead of impersonating Firefox (#5, #D5).
 - Improved: `do` now consistently closes the response body on all error
@@ -57,6 +62,10 @@ Note: pre-1.0 releases may break the API at any minor bump.
   status-bearing error (#4).
 - `GetAttachment` no longer leaks the response body on non-2xx responses;
   the body is drained and closed before the error is returned (#4).
+- Debug logging no longer includes raw `Authorization` headers,
+  `AccessToken`, `RefreshToken`, `ClientProof`, or `ServerProof` values.
+  Sensitive headers are redacted via an internal helper; request and
+  response bodies are no longer dumped (#6, security follow-up).
 
 ## [0.1.0] - TBD
 
