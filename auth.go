@@ -20,6 +20,9 @@ type authInfoReq struct {
 	Username string
 }
 
+// AuthInfo carries the SRP session parameters returned by AuthInfo. Its
+// fields are intentionally unexported: they are inputs to the SRP handshake
+// performed by Auth and are not useful to inspect directly.
 type AuthInfo struct {
 	version         int
 	modulus         string
@@ -28,6 +31,9 @@ type AuthInfo struct {
 	srpSession      string
 }
 
+// AuthInfoResp is the wire-level response returned by /auth/info. Most
+// callers should use AuthInfo via the Client.AuthInfo helper rather than
+// decoding this directly.
 type AuthInfoResp struct {
 	resp
 	AuthInfo
@@ -48,6 +54,10 @@ func (resp *AuthInfoResp) authInfo() *AuthInfo {
 	return info
 }
 
+// AuthInfo fetches the SRP parameters required to authenticate as username.
+// It is the first step of the authentication flow; callers normally pass the
+// returned *AuthInfo to Auth. ctx controls cancellation of the underlying
+// request.
 func (c *Client) AuthInfo(ctx context.Context, username string) (*AuthInfo, error) {
 	reqData := &authInfoReq{
 		Username: username,
@@ -73,14 +83,23 @@ type authReq struct {
 	ClientProof     string
 }
 
+// PasswordMode describes whether the account uses a single login password
+// (PasswordSingle) or separate login and mailbox passwords (PasswordTwo).
 type PasswordMode int
 
 const (
+	// PasswordSingle indicates the same password unlocks login and mailbox.
 	PasswordSingle PasswordMode = 1
-	PasswordTwo                 = 2
+	// PasswordTwo indicates the account uses a separate mailbox password.
+	PasswordTwo = 2
 )
 
+// Auth is the result of a successful authentication. It carries the session
+// identifiers (UID, AccessToken, RefreshToken) used for subsequent requests,
+// the absolute ExpiresAt at which AccessToken stops being valid, and metadata
+// about the account's password and 2FA configuration.
 type Auth struct {
+	// ExpiresAt is the absolute time at which AccessToken stops being valid.
 	ExpiresAt    time.Time
 	Scope        string
 	UID          string
@@ -88,8 +107,13 @@ type Auth struct {
 	RefreshToken string
 	UserID       string
 	EventID      string
+	// PasswordMode reports whether the account uses a single or two-password
+	// login.
 	PasswordMode PasswordMode
-	TwoFactor    struct {
+	// TwoFactor describes the 2FA methods enabled on the account. Enabled is
+	// non-zero if any 2FA method is enabled; TOTP is non-zero if TOTP is
+	// enabled.
+	TwoFactor struct {
 		Enabled int
 		U2F     interface{} // TODO
 		TOTP    int
@@ -110,6 +134,12 @@ func (resp *authResp) auth() *Auth {
 	return auth
 }
 
+// Auth completes the SRP handshake and exchanges credentials for a session.
+// If info is nil it is fetched via AuthInfo. On success the Client retains
+// the resulting UID and AccessToken so subsequent calls are authenticated.
+//
+// On invalid credentials the error wraps ErrUnauthorized; callers should
+// check with errors.Is(err, protonmail.ErrUnauthorized).
 func (c *Client) Auth(ctx context.Context, username, password string, info *AuthInfo) (*Auth, error) {
 	if info == nil {
 		var err error
@@ -150,6 +180,10 @@ func (c *Client) Auth(ctx context.Context, username, password string, info *Auth
 	return auth, nil
 }
 
+// AuthTOTP submits a six-digit TOTP code to satisfy the second factor of
+// authentication. It must be called after Auth on accounts that have TOTP
+// enabled (see Auth.TwoFactor.TOTP). The returned scope describes the
+// permissions of the now-elevated session.
 func (c *Client) AuthTOTP(ctx context.Context, code string) (scope string, err error) {
 	reqData := struct {
 		TwoFactorCode string
@@ -182,6 +216,10 @@ type authRefreshReq struct {
 	RedirectURI  string
 }
 
+// AuthRefresh exchanges expiredAuth.RefreshToken for a fresh session. It is
+// the conventional implementation of the WithReAuth callback: when a request
+// receives 401 the Client invokes the registered callback, which usually
+// calls AuthRefresh and stores the new tokens for the next attempt.
 func (c *Client) AuthRefresh(ctx context.Context, expiredAuth *Auth) (*Auth, error) {
 	reqData := &authRefreshReq{
 		RefreshToken: expiredAuth.RefreshToken,
@@ -207,6 +245,9 @@ func (c *Client) AuthRefresh(ctx context.Context, expiredAuth *Auth) (*Auth, err
 	return auth, nil
 }
 
+// ListKeySalts fetches the per-key salt material the client needs in order
+// to derive the password used to unlock each private key. The returned map
+// is keyed by key ID; values may be nil for keys that have no salt.
 func (c *Client) ListKeySalts(ctx context.Context) (map[string][]byte, error) {
 	req, err := c.newRequest(ctx, http.MethodGet, "/keys/salts", nil)
 	if err != nil {
@@ -333,6 +374,14 @@ func (c *Client) unlockKeyRing(keys []*PrivateKey, userKeyRing openpgp.EntityLis
 	return keyRing, nil
 }
 
+// Unlock decrypts the user and address private keys using passphrase and the
+// per-key salts returned by ListKeySalts, and stores the resulting key ring
+// on the Client so encrypted messages can be read and sent. auth is the
+// session returned by Auth (or by AuthTOTP-completed flow).
+//
+// If no key on the account can be unlocked the returned error wraps
+// ErrNoUnlockableKeys; callers can check with errors.Is. Address keys that
+// fail to unlock are logged at warn level and skipped.
 func (c *Client) Unlock(ctx context.Context, auth *Auth, keySalts map[string][]byte, passphrase string) (openpgp.EntityList, error) {
 	c.uid = auth.UID
 	c.accessToken = auth.AccessToken
@@ -376,6 +425,16 @@ func (c *Client) Unlock(ctx context.Context, auth *Auth, keySalts map[string][]b
 	return keyRing, nil
 }
 
+// Logout invalidates the current session on the Proton API and, on success,
+// clears the Client's cached UID, access token, and key ring.
+//
+// If the request itself fails (network error, etc.) the local auth state is
+// preserved so that callers can retry. Callers should not assume that
+// subsequent requests will fail with ErrUnauthorized: endpoints that do not
+// require authentication (for example AuthInfo) will still succeed, and
+// authenticated requests issued after a successful Logout will simply
+// receive a fresh 401 from the server. The Client does not gate calls on
+// the cleared local state.
 func (c *Client) Logout(ctx context.Context) error {
 	req, err := c.newRequest(ctx, http.MethodDelete, "/auth", nil)
 	if err != nil {
